@@ -1,3 +1,8 @@
+/**
+ * Represents a user within the messaging platform.
+ * Encapsulates credentials for authentication and tracks the user of the active session.
+ */
+
 public class User {
     private final String username;
     private final String password;
@@ -13,17 +18,5 @@ public class User {
 
     public String getPassword() {
         return password;
-    }
-
-    public String toFileString() {
-        return username + "|" + password;
-    }
-
-    public static User fromFileString(String line) {
-        String[] parts = line.split("\\|", 2);
-        if (parts.length == 2) {
-            return new User(parts[0], parts[1]);
-        }
-        return null;
     }
 }
