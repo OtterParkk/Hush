@@ -1,21 +1,13 @@
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 
 public class Main {
-    private static final Path USERS_FILE = Paths.get("users.txt");
-    private static final Path MESSAGES_FILE = Paths.get("messages.txt");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    static void main() {
-        initStorage();
+    public static void main(String[] args) {
+        DatabaseOperations.initTables();
         Scanner scanner = new Scanner(System.in);
 
         while (true) {
@@ -30,13 +22,13 @@ public class Main {
                 User loggedInUser = handleLogin(scanner);
                 if (loggedInUser != null) {
                     runUserSession(scanner, loggedInUser);
-                    break; // Program ends when user logs out
+                    break;
                 }
             } else if (choice.equals("2")) {
                 User newUser = handleAccountCreation(scanner);
                 if (newUser != null) {
                     runUserSession(scanner, newUser);
-                    break; // Program ends when user logs out
+                    break;
                 }
             } else if (choice.equals("3")) {
                 System.out.println("Farewell!");
@@ -49,19 +41,6 @@ public class Main {
         scanner.close();
     }
 
-    private static void initStorage() {
-        try {
-            if (!Files.exists(USERS_FILE)) {
-                Files.createFile(USERS_FILE);
-            }
-            if (!Files.exists(MESSAGES_FILE)) {
-                Files.createFile(MESSAGES_FILE);
-            }
-        } catch (IOException e) {
-            System.err.println("Could not initialize storage files: " + e.getMessage());
-        }
-    }
-
     private static User handleAccountCreation(Scanner scanner) {
         System.out.println("\n--- Account Creation ---");
         System.out.print("Enter a username: ");
@@ -72,12 +51,7 @@ public class Main {
             return null;
         }
 
-        if (username.contains("|")) {
-            System.out.println("Usernames cannot contain the '|' character.");
-            return null;
-        }
-
-        if (findUser(username) != null) {
+        if (DatabaseOperations.findUser(username) != null) {
             System.out.println("That username is already taken. Please try again.");
             return null;
         }
@@ -89,20 +63,19 @@ public class Main {
             System.out.print("Confirm password: ");
             String confirmPassword = scanner.nextLine();
 
-            if (password.contains("|")) {
-                System.out.println("Passwords cannot contain the '|' character. Please choose another.");
-                continue;
-            }
-
             if (!password.equals(confirmPassword)) {
                 System.out.println("Passwords do not match. The password process is restarting.\n");
                 continue;
             }
 
             User newUser = new User(username, password);
-            saveUser(newUser);
-            System.out.println("Account created successfully! You are now logged in.");
-            return newUser;
+            if (DatabaseOperations.saveUser(newUser)) {
+                System.out.println("Account created successfully! You are now logged in.");
+                return newUser;
+            } else {
+                System.out.println("Could not create account due to a database error.");
+                return null;
+            }
         }
     }
 
@@ -114,7 +87,7 @@ public class Main {
         System.out.print("Password: ");
         String password = scanner.nextLine();
 
-        User user = authenticate(username, password);
+        User user = DatabaseOperations.authenticate(username, password);
         if (user != null) {
             System.out.println("Login successful! Welcome back, " + user.getUsername() + ".");
             return user;
@@ -147,14 +120,7 @@ public class Main {
 
     private static void readMessagesFor(String username) {
         System.out.println("\n--- Your Inbox ---");
-        List<Message> allMessages = loadMessages();
-        List<Message> userMessages = new ArrayList<>();
-
-        for (Message msg : allMessages) {
-            if (msg.getRecipient().equalsIgnoreCase(username)) {
-                userMessages.add(msg);
-            }
-        }
+        List<Message> userMessages = DatabaseOperations.loadMessagesFor(username);
 
         if (userMessages.isEmpty()) {
             System.out.println("No messages found.");
@@ -174,7 +140,7 @@ public class Main {
         System.out.print("Recipient username: ");
         String recipient = scanner.nextLine().trim();
 
-        if (findUser(recipient) == null) {
+        if (DatabaseOperations.findUser(recipient) == null) {
             System.out.println("Error: Recipient '" + recipient + "' does not exist.");
             return;
         }
@@ -184,94 +150,8 @@ public class Main {
 
         String timestamp = LocalDateTime.now().format(DATE_FORMATTER);
         Message message = new Message(recipient, currentUser.getUsername(), timestamp, content);
-        saveMessage(message);
+        DatabaseOperations.saveMessage(message);
 
         System.out.println("Message sent successfully!");
-    }
-
-    private static List<User> loadUsers() {
-        List<User> users = new ArrayList<>();
-        if (!Files.exists(USERS_FILE)) {
-            return users;
-        }
-        try {
-            List<String> lines = Files.readAllLines(USERS_FILE);
-            for (String line : lines) {
-                if (!line.isBlank()) {
-                    User user = User.fromFileString(line);
-                    if (user != null) {
-                        users.add(user);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Error reading users: " + e.getMessage());
-        }
-        return users;
-    }
-
-    private static User findUser(String username) {
-        for (User user : loadUsers()) {
-            if (user.getUsername().equalsIgnoreCase(username)) {
-                return user;
-            }
-        }
-        return null;
-    }
-
-    private static User authenticate(String username, String password) {
-        for (User user : loadUsers()) {
-            if (user.getUsername().equalsIgnoreCase(username) && user.getPassword().equals(password)) {
-                return user;
-            }
-        }
-        return null;
-    }
-
-    private static void saveUser(User user) {
-        try {
-            Files.writeString(
-                    USERS_FILE,
-                    user.toFileString() + System.lineSeparator(),
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.APPEND
-            );
-        } catch (IOException e) {
-            System.err.println("Error saving user: " + e.getMessage());
-        }
-    }
-
-    private static List<Message> loadMessages() {
-        List<Message> messages = new ArrayList<>();
-        if (!Files.exists(MESSAGES_FILE)) {
-            return messages;
-        }
-        try {
-            List<String> lines = Files.readAllLines(MESSAGES_FILE);
-            for (String line : lines) {
-                if (!line.isBlank()) {
-                    Message msg = Message.fromFileString(line);
-                    if (msg != null) {
-                        messages.add(msg);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Error reading messages: " + e.getMessage());
-        }
-        return messages;
-    }
-
-    private static void saveMessage(Message message) {
-        try {
-            Files.writeString(
-                    MESSAGES_FILE,
-                    message.toFileString() + System.lineSeparator(),
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.APPEND
-            );
-        } catch (IOException e) {
-            System.err.println("Error saving message: " + e.getMessage());
-        }
     }
 }
