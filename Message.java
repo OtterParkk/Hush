@@ -1,3 +1,8 @@
+/**
+* Represents a message within the messaging system
+* Useful for data organization and encapsulation
+*/
+
 public class Message {
     private final String recipient;
     private final String author;
@@ -25,17 +30,5 @@ public class Message {
 
     public String getContent() {
         return content;
-    }
-
-    public String toFileString() {
-        return recipient + "|" + author + "|" + timestamp + "|" + content;
-    }
-
-    public static Message fromFileString(String line) {
-        String[] parts = line.split("\\|", 4);
-        if (parts.length == 4) {
-            return new Message(parts[0], parts[1], parts[2], parts[3]);
-        }
-        return null;
     }
 }
