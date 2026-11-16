@@ -6,16 +6,9 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
-* Handles the actual logic of database manipulation and querying
-* Very useful for code organization
-*/
-
+/** Handles the actual logic of database manipulation and querying. */
 public class DatabaseOperations {
-
-    /**
-     * Creates the necessary database tables (users and messages) if they do not already exist.
-     */
+    /** Creates the necessary database tables (users and messages) if they do not already exist. */
     public static void initTables() {
         String createUsers = """
                 CREATE TABLE IF NOT EXISTS users (
@@ -34,7 +27,6 @@ public class DatabaseOperations {
                 );
                 """;
 
-        // Block to connect to the database and run the SQL strings
         try (Connection conn = Database.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(createUsers);
@@ -44,20 +36,13 @@ public class DatabaseOperations {
         }
     }
 
-    /**
-     * Queries the database for a specific user by their username (case-insensitive).
-     *
-     * @param username the username to search for
-     * @return a User object if found, or null if the user does not exist
-     */
+    /** Queries the database for a specific user by username (case-insensitive). */
     public static User findUser(String username) {
         String sql = "SELECT username, password FROM users WHERE LOWER(username) = LOWER(?)";
 
         try (Connection conn = Database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, username);
-
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return new User(rs.getString("username"), rs.getString("password"));
@@ -69,22 +54,15 @@ public class DatabaseOperations {
         return null;
     }
 
-    /**
-     * Authenticates a user by checking if the given username and password match a record.
-     *
-     * @param username the username provided during login
-     * @param password the password provided during login
-     * @return a User object if credentials are valid, or null otherwise
-     */
+    /** Authenticates a user using the supplied username and password. */
     public static User authenticate(String username, String password) {
-        String sql = "SELECT username, password FROM users WHERE LOWER(username) = LOWER(?) AND password = ?";
+        String sql = "SELECT username, password FROM users "
+                + "WHERE LOWER(username) = LOWER(?) AND password = ?";
 
         try (Connection conn = Database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, username);
             stmt.setString(2, password);
-
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return new User(rs.getString("username"), rs.getString("password"));
@@ -96,18 +74,12 @@ public class DatabaseOperations {
         return null;
     }
 
-    /**
-     * Saves a new user record into the database.
-     *
-     * @param user the User object containing username and password
-     * @return true if the insertion was successful, false otherwise
-     */
+    /** Saves a new user record into the database. */
     public static boolean saveUser(User user) {
         String sql = "INSERT INTO users (username, password) VALUES (?, ?)";
 
         try (Connection conn = Database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, user.getUsername());
             stmt.setString(2, user.getPassword());
             stmt.executeUpdate();
@@ -118,17 +90,12 @@ public class DatabaseOperations {
         }
     }
 
-    /**
-     * Inserts a new message record into the database.
-     *
-     * @param message the Message object containing recipient, author, and content details
-     */
+    /** Inserts a new message record into the database. */
     public static void saveMessage(Message message) {
         String sql = "INSERT INTO messages (recipient, author, content) VALUES (?, ?, ?)";
 
         try (Connection conn = Database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, message.getRecipient());
             stmt.setString(2, message.getAuthor());
             stmt.setString(3, message.getContent());
@@ -139,24 +106,32 @@ public class DatabaseOperations {
     }
 
     /**
-     * Loads all messages sent to a specific recipient (case-insensitive), ordered chronologically.
-     *
-     * @param username the recipient's username
-     * @return a List of Message objects addressed to the user
+     * Loads all messages addressed to a user, ordered by the serial message ID.
+     * Used once after login to display the user's existing inbox.
      */
     public static List<Message> loadMessagesFor(String username) {
+        return loadMessagesForAfterId(username, 0L);
+    }
+
+    /**
+     * Loads messages addressed to a user whose serial IDs are greater than lastMessageId.
+     * This is used by the live polling loop to avoid reprinting messages already shown.
+     */
+    public static List<Message> loadMessagesForAfterId(String username, long lastMessageId) {
         List<Message> messages = new ArrayList<>();
-        String sql = "SELECT recipient, author, COALESCE(TO_CHAR(sent_at, 'YYYY-MM-DD HH24:MI:SS'), '') AS formatted_time, content " +
-                "FROM messages WHERE LOWER(recipient) = LOWER(?) ORDER BY sent_at ASC";
+        String sql = "SELECT id, recipient, author, "
+                + "COALESCE(TO_CHAR(sent_at, 'YYYY-MM-DD HH24:MI:SS'), '') AS formatted_time, content "
+                + "FROM messages WHERE LOWER(recipient) = LOWER(?) AND id > ? ORDER BY id ASC";
 
         try (Connection conn = Database.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setString(1, username);
+            stmt.setLong(2, lastMessageId);
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     messages.add(new Message(
+                            rs.getLong("id"),
                             rs.getString("recipient"),
                             rs.getString("author"),
                             rs.getString("formatted_time"),
@@ -167,6 +142,7 @@ public class DatabaseOperations {
         } catch (SQLException e) {
             System.err.println("Error loading messages: " + e.getMessage());
         }
+
         return messages;
     }
 }
